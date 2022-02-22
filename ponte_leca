@@ -1,0 +1,167 @@
+
+ /*  Projeto: Ponte Móvel Andréia de Leça
+  *  By: Instituto Vander LAB de Robótica
+  *  Data do projeto: 23/03/2021
+  *  Atualizado: 11/09/2021
+  *  Engenheiro: Vander Gonçalves
+ */
+
+//=======================================================================================
+//--------------------- Definindo variavéis para ponte móvel Andréia de Leça
+//=======================================================================================
+
+#define sensorA   4   //Sensor da parte de cima  
+#define sensorB   5   //Sensor da parte de baixo
+#define motorIn1  7   //Conecção ao pino do IN1 (vermelho) do L298N
+#define motorIn2  8   //Conecção ao pino do IN2 (preto)    do L298N
+
+//=======================================================================================
+//--------------------- Definindo variavéis para cancela e semáforo
+//=======================================================================================
+
+#include <Servo.h>          //incluindo biblioteca para Servo motor
+#define SERVO 6             // Porta 6 para o sinal
+Servo s;                    // Variável Servo
+int pos;                    // Posição Servo
+
+#define vermelho 3
+#define verde    2
+
+//=======================================================================================
+//--------------------- void setup
+//=======================================================================================
+void setup() {
+  
+//ponte
+pinMode(sensorA,  INPUT);         //Sensor recebe o dado
+pinMode(sensorB,  INPUT);         //Sensor recebe o dado
+pinMode(motorIn1,       OUTPUT);  //Motor IN1
+pinMode(motorIn2,       OUTPUT);  //Motor IN2
+
+
+//semáfaro e cancela
+      s.attach(SERVO);          // attach indica qual pino esta sendo utilizado --> pino 6
+      s.write(90);              // Inicia motor posição zero para cancela
+      pinMode(3, OUTPUT);       // led Vermelho
+      pinMode(2, OUTPUT);       // Led Verde
+ }//fim setup  
+
+void loop() {
+//=======================================================================================
+//--------------------- Ponte baixa
+//=======================================================================================
+ /*
+ * Descrição dos pinos do L298N
+ * IN1 = 1, IN2 = 0    --> Forward
+ * IN1 = 0, IN2 = 1    --> Reverse
+ * IN1 = 0, IN2 = 0    --> Stop
+ * IN1 = 1, IN2 = 1    --> Stop com freio
+ * 
+ * Descrição dos pinos do sensor
+ * sensorA pino 6
+ * sensorB pino 7
+ */
+//=======================================================================================
+//--------------------- Cancela começa aberta
+//--------------------- Com a ponte baixa, sinal fica verde
+//--------------------- Ponte fica aberta por 1 minuto
+//=======================================================================================
+  
+      //primeiro if comparando sensores
+      //Faz a ponte subir
+   if (digitalRead (sensorA)== LOW && digitalRead (sensorB)== HIGH) {
+        
+        digitalWrite(vermelho,HIGH);  //----->led ligado
+        abrir();
+        digitalWrite(verde,HIGH);     //-----> Led verde ligado
+        digitalWrite(vermelho, LOW);  //-----> Led vermelho desligado
+        digitalWrite(motorIn1, LOW);  //-----> motor               
+        digitalWrite(motorIn2, LOW);  //-----> motor
+        delay(20000);                 //-----> 20 segundas para os carros passarem
+
+        pisca();                      //-----> Alerta para os carros
+
+        //-----> motores subindo  
+        digitalWrite(motorIn1, LOW);            
+        digitalWrite(motorIn2, HIGH); 
+        
+        digitalWrite(verde,LOW);      //-----> led desligado
+        digitalWrite(vermelho,HIGH);  //-----> led ligado
+        
+        fecha();                      //-----> Fecha cancela pela função
+        delay(45000);                 //-----> Sober por 45 segundos
+         
+          if (digitalRead (sensorA)== LOW && digitalRead (sensorB)== LOW){
+          
+          digitalWrite(motorIn1, LOW);  //-----------> motores parados
+          digitalWrite(motorIn2, LOW);  //----------->
+          delay(10);
+          digitalWrite(motorIn1, LOW);  //-----------> motores subindo             
+          digitalWrite(motorIn2, HIGH); //----------->                 
+        }}
+
+
+//=======================================================================================
+//--------------------- Parada da ponte para o trafego de navios
+//=======================================================================================
+
+        
+   if (digitalRead (sensorA)== HIGH && digitalRead (sensorB)== LOW) {
+        //Faz a ponte descer
+
+        digitalWrite(verde,LOW);        //----------->Led 
+        digitalWrite(vermelho, HIGH);   //----------->led   
+
+       //-----> ponte parada  
+        digitalWrite(motorIn1, LOW);                 
+        digitalWrite(motorIn2, LOW);    
+        delay(20000);                   //-----> 20 segundos a ponte parada
+
+        //-----> desce a ponte
+        digitalWrite(motorIn1, HIGH);                 
+        digitalWrite(motorIn2, LOW);    
+        delay(45000);                   //-----> desce a ponte por 45 segundos
+
+         //compara sensores
+          if (digitalRead (sensorA)== LOW && digitalRead (sensorB)== LOW){
+
+          //para a ponte por 10 milisegundos depois desce
+          digitalWrite(motorIn1, LOW);   
+          digitalWrite(motorIn2, LOW);
+          delay(10);
+          digitalWrite(motorIn1, HIGH);                   
+          digitalWrite(motorIn2, LOW); 
+          }}
+          }//fim loop
+
+//=======================================================================================
+//--------------------- Funções
+//--------------------- Função pisca() -- Função fecha() -- Função abre
+//=======================================================================================
+
+
+//Função pisca alerta
+ void pisca(){
+        for(int x = 0; x < 10; x++){
+        digitalWrite(vermelho,HIGH);
+        
+        delay(500);
+        digitalWrite(vermelho,LOW);
+        delay(500);
+        }}
+
+             //Função Fecha a cancela
+             void fecha(){
+              for(pos = 180; pos >= 90; pos--)
+              { s.write(pos);
+                delay(100);
+                }}
+
+                  //Função Abre cancela
+                  void abrir(){ //Leva 9 segundos para abrir
+                    for(pos = 90; pos <= 180; pos++){
+                    s.write(pos);
+                    delay(100);
+                                       }}
+       
+      
