@@ -1,0 +1,111 @@
+//Pinos de conexao do modulo
+const int s0 = 4;
+const int s1 = 5;
+const int s2 = 6;
+const int s3 = 7;
+const int out = 8;
+ 
+//Pinos do led RGB
+int pinoledverm = 10;
+int pinoledverd = 11;
+int pinoledazul =9 ;
+ 
+//Variáveis para calibrar o sensor
+int vermelho = 95;
+int verde = 100;
+int azul = 110;
+
+void setup()
+{
+  pinMode(s0, OUTPUT);
+  pinMode(s1, OUTPUT);
+  pinMode(s2, OUTPUT);
+  pinMode(s3, OUTPUT);
+  pinMode(out, INPUT);
+
+  pinMode(pinoledverm, OUTPUT);
+  pinMode(pinoledverd, OUTPUT);
+  pinMode(pinoledazul, OUTPUT);
+  
+  Serial.begin(115200); // Inicia o monitor serial na freqência de 115200 bounds
+  
+/* // Sensibilidade do sensor
+S0 HIGH E S1 HIGH - 100%
+S0 LOW E S0 HIGH - 2%
+S0 HIGH E S1 LOW - 20%
+S0 LOW E S1 LOW - Desligado*/
+
+  digitalWrite(s0, HIGH);
+  digitalWrite(s1, LOW);
+
+}
+ 
+void loop()
+{
+  //Detecta a cor
+  color();
+  //Mostra valores no serial monitor
+  Serial.print("Vermelho :");
+  Serial.print(vermelho, DEC);
+  Serial.print(" Verde : ");
+  Serial.print(verde, DEC);
+  Serial.print(" Azul : ");
+  Serial.print(azul, DEC);
+  Serial.println();
+ 
+  //Verifica se a cor vermelha foi detectada
+  if ( 500 < vermelho < azul && vermelho < verde && vermelho)
+  {
+    Serial.println("Vermelho");
+    digitalWrite(pinoledverm, HIGH); //Acende o led vermelho
+    digitalWrite(pinoledverd, LOW);
+    digitalWrite(pinoledazul, LOW);
+  }
+ 
+  //Verifica se a cor azul foi detectada
+  else if ( 500 < azul < vermelho && azul < verde && azul)
+  {
+    Serial.println("Azul");
+    digitalWrite(pinoledverm, LOW);
+    digitalWrite(pinoledverd, LOW);
+    digitalWrite(pinoledazul, HIGH); //Acende o led azul
+  }
+ 
+  //Verifica se a cor verde foi detectada
+  else if (500 < verde < vermelho && verde < azul)
+  {
+    Serial.println("Verde");
+    digitalWrite(pinoledverm, LOW);
+    digitalWrite(pinoledverd, HIGH); //Acende o led verde
+    digitalWrite(pinoledazul, LOW);
+  }
+  Serial.println();
+ 
+  //Delay para apagar os leds e reiniciar o processo
+  delay(50);
+  digitalWrite(pinoledverm, HIGH);
+  digitalWrite(pinoledverd, HIGH);
+  digitalWrite(pinoledazul, HIGH);
+}
+ 
+void color()   //Função que lê o valor das cores
+{
+  /*
+//Ativação dos filtros
+S2 HIGH e S3 HIGH - VERDE
+S2 LOW e S3 LOW - VERMELHO
+S2 HIGH e S3 LOW - DESLIGADO
+S2 LOW e S3 HIGH - AZUL
+*/ 
+
+  digitalWrite(s2, LOW);
+  digitalWrite(s3, LOW);
+  
+  vermelho = pulseIn(out, digitalRead(out) == HIGH ? LOW : HIGH);
+  digitalWrite(s3, HIGH);
+
+  azul = pulseIn(out, digitalRead(out) == HIGH ? LOW : HIGH);
+  digitalWrite(s2, HIGH);
+
+  verde = pulseIn(out, digitalRead(out) == HIGH ? LOW : HIGH);
+}
