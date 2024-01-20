@@ -1,0 +1,155 @@
+//Definição dos Pinos de Controle dos Motores
+#define pinMotor1P 11
+#define pinMotor1N 10
+#define pinMotor2P 9
+#define pinMotor2N 6
+
+#define pinEixoX A0
+#define pinEixoY A1
+
+int dirFrente   = 0;
+int dirTras     = 0;
+int dirDireita  = 0;
+int dirEsquerda = 0;
+
+int dirFrente1 = 0;
+int dirFrente2 = 0;
+int dirTras1   = 0;
+int dirTras2   = 0;
+
+int leituraX;
+int leituraY;
+
+int centroX = 511;
+int centroY = 511;
+
+int toleraX = 0;
+int toleraY = 0;
+
+void setup()
+{
+  //Configuração dos Pinos de Controle dos Motores
+  pinMode(pinMotor1P, OUTPUT);
+  pinMode(pinMotor1N, OUTPUT);
+  pinMode(pinMotor2P, OUTPUT);
+  pinMode(pinMotor2N, OUTPUT);
+  
+  //Ver o que está acontecendo (DEBUG)
+  Serial.begin(9600);
+  
+  //Calibra automático
+  unsigned long somaCentroX = 0;
+  unsigned long somaCentroY = 0;
+  int minCentroX = 0;
+  int minCentroY = 0;
+  int maxCentroX = 0;
+  int maxCentroY = 0;
+  for (int nL=0; nL<100; nL++) {
+     leituraX = analogRead(pinEixoX);
+     leituraY = analogRead(pinEixoY);
+    
+     somaCentroX += leituraX;
+     somaCentroY += leituraY;
+    
+     if (nL == 0) {
+       minCentroX = leituraX;
+       minCentroY = leituraY;
+       maxCentroX = leituraX;
+       maxCentroY = leituraY;
+     } else {  
+       minCentroX = min(minCentroX, leituraX);
+       maxCentroX = max(maxCentroX, leituraX);
+       minCentroY = min(minCentroY, leituraY);
+       maxCentroY = max(maxCentroY, leituraY);
+     }
+     delay(10);
+  }  
+  centroX = somaCentroX / 100;
+  centroY = somaCentroY / 100;
+  
+  toleraX = (maxCentroX - minCentroX) + 2;
+  toleraY = (maxCentroY - minCentroY) + 2;
+}
+
+void loop()
+{
+  
+  dirFrente   = 0;
+  dirTras     = 0;
+  dirDireita  = 0;
+  dirEsquerda = 0;
+  
+  leituraX = analogRead(pinEixoX);
+  leituraY = analogRead(pinEixoY);
+  
+  if (leituraX < (centroX - toleraX)) {
+    dirFrente = map(leituraX, 0, centroX, 255, 0);
+  }
+  
+  if (leituraX > (centroX + toleraX)) {
+    dirTras = map(leituraX, centroX, 1023, 0, 255);
+  }
+  
+  if (leituraY < (centroY - toleraY)) {
+    dirEsquerda = map(leituraY, 0, centroY, 255, 0);
+  }
+  
+  if (leituraY > (centroY + toleraY)) {
+    dirDireita = map(leituraY, centroY, 1023, 0, 255);
+  }
+  
+  if (dirFrente > 0) {
+    dirFrente1 = dirFrente;
+    dirFrente2 = dirFrente;
+    if (dirEsquerda > 0) {
+      dirFrente1 = map(dirEsquerda, 0, 255, dirFrente, 0);
+    }  
+    if (dirDireita > 0) {
+      dirFrente2 = map(dirDireita, 0, 255, dirFrente, 0);
+    }  
+  }
+  
+  if (dirTras > 0) {
+    dirTras1 = dirTras;
+    dirTras2 = dirTras;
+    if (dirEsquerda > 0) {
+      dirTras1 = map(dirEsquerda, 0, 255, dirTras, 0);
+    }  
+    if (dirDireita > 0) {
+      dirTras2 = map(dirDireita, 0, 255, dirTras, 0);
+    }  
+  }
+  
+  /*
+  Serial.print("dirF:");
+  Serial.print(dirFrente);
+  
+  Serial.print(" dirT:");
+  Serial.print(dirTras);
+  
+  Serial.print(" dirE:");
+  Serial.print(dirEsquerda);
+  
+  Serial.print(" dirD:");
+  Serial.print(dirDireita);
+
+  Serial.print(" dirF1:");
+  Serial.print(dirFrente1);
+  
+  Serial.print(" dirF2:");
+  Serial.print(dirFrente2);
+  
+  Serial.print(" dirT1:");
+  Serial.print(dirTras1);
+
+  Serial.print(" dirT2:");
+  Serial.println(dirTras2);
+  */
+
+  analogWrite(pinMotor1P, dirFrente1);
+  analogWrite(pinMotor1N, dirTras1);
+  analogWrite(pinMotor2P, dirFrente2);
+  analogWrite(pinMotor2N, dirTras2);
+  
+  delay(10);
+}
