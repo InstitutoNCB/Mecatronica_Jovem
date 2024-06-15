@@ -1,0 +1,55 @@
+#include <Servo.h> // incluimos a bibloteca do servo ao código
+
+Servo myServo;  // atribuimos uma instancia para o servo
+
+// Aqui criamos variaveis que representam as portas que vamos usar:
+const int botao_1 = 11;     // porta 11 - botão 1
+const int botao_2 = 12;   // porta 12 - botão 2
+const int botao_3 = 13;   // porta 13 - botão 3
+const int motor = 9; // porta 9 - motor
+
+// variaveis que podemos mudar:
+int estado_botao_1 = 0;       // deixamos a variavel do botao 1 setado como desligado
+int estado_botao_2 = 0;       // deixamos a variavel do botao 2 setado como desligado
+int estado_botao_3 = 0;       // deixamos a variavel do botao 3 setado como desligado
+int cremalheira = 15;    // 15 graus eh o ponto morto do cambio
+int carro = 0; // variável que informa se o motor está ligado ou desligado
+
+void setup() {
+  pinMode(motor, OUTPUT); // definimos que o pino 9 que é do motor é somente saida
+  pinMode(botao_1, INPUT); // definimos que o pino 11 onde está o botão 1 é entrada
+  pinMode(botao_2, INPUT); // definimos que o pino 11 onde está o botão 1 é entrada
+  pinMode(botao_3, INPUT); // definimos que o pino 11 onde está o botão 1 é entrada
+  myServo.attach(10); // definimos que o pino do servo sera o 10
+  Serial.begin(9600); // definimos um tempo para o servo
+  digitalWrite(motor, LOW); // inicia como motor desligado
+}
+
+void loop() {
+  estado_botao_1 = digitalRead(botao_1); // verifica se o botao 1 esta pressionado ou nao
+  estado_botao_2 = digitalRead(botao_2); // verifica se o botao 2 esta pressionado ou nao
+  estado_botao_3 = digitalRead(botao_3); // verifica se o botao 3 esta pressionado ou nao
+
+  if (estado_botao_1 == HIGH) { // botao 1 foi pressionado ?
+    cremalheira = 15;           // ponto morto = desengrenado
+    myServo.write(cremalheira); // deixa o cambio em ponto morto
+    if (carro == 0) {           // carro estava desligado
+      digitalWrite(motor, HIGH); // liga o motor
+      carro = 1;                // variavel carro indica que o motor ficou ligado
+    } else {                    // se o motor nao esta desligado 
+      digitalWrite(motor, LOW);  // desliga o motor
+      carro = 0;                // variavel carro informa que o carro esta desligado
+    }
+    delay(500);  // damos um tempo para não termos repeticao de aperto de botao
+  }
+    
+  if (estado_botao_2 == HIGH) {  // botao 2 foi pressionado ?
+    cremalheira = 0;            // aciona 1a marcha colocando o valor da variavel cremalheira em 0
+  }
+  
+  if (estado_botao_3 == HIGH) {  // botao 3 foi pressionado ?
+    cremalheira = 30;            // aciona 2a marcha colocando o valor da variavel cremalheira em 30
+  } 
+    myServo.write(cremalheira);  // movimenta o servo ate o valor da variavel cremalheira
+}
+  
