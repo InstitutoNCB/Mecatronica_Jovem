@@ -1,0 +1,166 @@
+//Projeto Kombi MJ - Tio Rafa - 2024
+
+#include <Dabble.h>
+
+// Define os pinos dos motores
+int in1 = 5;
+int in2 = 6;
+int in3 = 10;
+int in4 = 11;
+
+// Define os pinos dos LEDs e Buzzer
+int buzzerPin = 7;
+int headlightPin = 8;
+int leftIndicatorPin = 9;
+int rightIndicatorPin = 12;
+int reverseLightPin = 13;
+
+// Define a velocidade máxima (0 a 255)
+int maxSpeed = 255;
+
+// Variáveis para controle do piscar das setas e pisca alerta
+unsigned long previousMillis = 0;
+const long interval = 500; // Intervalo de 500ms para piscar
+bool hazardOn = false; // Estado do pisca alerta
+bool hazardState = false; // Estado do botão do pisca alerta
+bool headlightState = false; // Estado do botão dos faróis
+bool lastHazardButtonState = false;
+bool lastHeadlightButtonState = false;
+
+void setup() {
+    Serial.begin(9600);             // Inicia a comunicação Serial com o módulo BLE
+    Dabble.begin(Serial);           // Inicia o Dabble usando a Serial
+
+    // Configura os pinos dos motores como saída
+    pinMode(in1, OUTPUT);
+    pinMode(in2, OUTPUT);
+    pinMode(in3, OUTPUT);
+    pinMode(in4, OUTPUT);
+
+    // Configura os pinos dos LEDs e Buzzer como saída
+    pinMode(buzzerPin, OUTPUT);
+    pinMode(headlightPin, OUTPUT);
+    pinMode(leftIndicatorPin, OUTPUT);
+    pinMode(rightIndicatorPin, OUTPUT);
+    pinMode(reverseLightPin, OUTPUT);
+
+
+ // Inicializa todos os LEDs e o buzzer desligados
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(headlightPin, LOW);
+    digitalWrite(leftIndicatorPin, LOW);
+    digitalWrite(rightIndicatorPin, LOW);
+    digitalWrite(reverseLightPin, LOW);
+}
+
+void loop() {
+    Dabble.processInput();          // Processa a entrada do Dabble
+
+    unsigned long currentMillis = millis();
+
+    // Controle do pisca alerta (ligar/desligar com toggle)
+    if (GamePad.isTrianglePressed()) {
+        if (!lastHazardButtonState) {
+            hazardState = !hazardState;
+        }
+        lastHazardButtonState = true;
+    } else {
+        lastHazardButtonState = false;
+    }
+
+    // Controle dos faróis (ligar/desligar com toggle)
+    if (GamePad.isSquarePressed()) {
+        if (!lastHeadlightButtonState) {
+            headlightState = !headlightState;
+            digitalWrite(headlightPin, headlightState ? HIGH : LOW);
+        }
+        lastHeadlightButtonState = true;
+    } else {
+        lastHeadlightButtonState = false;
+    }
+
+    // Controle do pisca alerta
+    if (hazardState) {
+        if (currentMillis - previousMillis >= interval) {
+            previousMillis = currentMillis;
+            digitalWrite(leftIndicatorPin, !digitalRead(leftIndicatorPin));
+            digitalWrite(rightIndicatorPin, !digitalRead(rightIndicatorPin));
+        }
+
+
+
+ } else {
+        // Controle de movimento - Direita
+        if (GamePad.isRightPressed()) {
+            analogWrite(in1, 0);
+            analogWrite(in2, maxSpeed);
+            analogWrite(in3, 0);
+            analogWrite(in4, maxSpeed);
+
+
+// Piscar seta direita
+            if (currentMillis - previousMillis >= interval) {
+                previousMillis = currentMillis;
+                digitalWrite(rightIndicatorPin, !digitalRead(rightIndicatorPin));
+            }
+            digitalWrite(leftIndicatorPin, LOW);
+        }
+        // Controle de movimento - Esquerda
+        else if (GamePad.isLeftPressed()) {
+            analogWrite(in1, maxSpeed);
+            analogWrite(in2, 0);
+            analogWrite(in3, maxSpeed);
+            analogWrite(in4, 0);
+
+            // Piscar seta esquerda
+            if (currentMillis - previousMillis >= interval) {
+                previousMillis = currentMillis;
+                digitalWrite(leftIndicatorPin, !digitalRead(leftIndicatorPin));
+            }
+            digitalWrite(rightIndicatorPin, LOW);
+        } else {
+            // Desligar setas quando o pisca alerta não está ativo e nenhum botão de seta está pressionado
+            digitalWrite(leftIndicatorPin, LOW);
+            digitalWrite(rightIndicatorPin, LOW);
+        }
+    }
+
+ // Controle de movimento - Frente
+    if (GamePad.isUpPressed()) {
+        analogWrite(in1, 0);
+        analogWrite(in2, maxSpeed);
+        analogWrite(in3, maxSpeed);
+        analogWrite(in4, 0);
+
+        // Desligar luz de ré
+        digitalWrite(reverseLightPin, LOW);
+    }
+    // Controle de movimento - Trás
+    else if (GamePad.isDownPressed()) {
+        analogWrite(in1, maxSpeed);
+        analogWrite(in2, 0);
+        analogWrite(in3, 0);
+        analogWrite(in4, maxSpeed);
+
+        
+
+// Acender luz de ré
+        digitalWrite(reverseLightPin, HIGH);
+    }
+    // Parar os motores se nenhum botão estiver pressionado
+    else if (!GamePad.isRightPressed() && !GamePad.isLeftPressed()) {
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, LOW);
+    }
+
+    // Controle de buzina
+    if (GamePad.isCirclePressed()) {
+        digitalWrite(buzzerPin, HIGH);
+    } else {
+        digitalWrite(buzzerPin, LOW);
+    }
+}
+
+
