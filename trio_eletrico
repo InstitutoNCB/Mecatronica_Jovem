@@ -1,0 +1,347 @@
+// Importando Bibliotecas
+#include <PS2X_lib.h> // Biblioteca com as funções para controle de controle de PSII
+#include <Servo.h> // Incluindo biblioteca Servo
+
+PS2X ps2x; //Instância um objeto PS2X para comunicação com o controle
+Servo servo; // Criando Objeto Servo, para controle do Servo Motor
+int erro = 0; // Variável para reportar erro de leitura do controle de PSII
+uint32_t Temp_PiscaAlerta, Temp_SetaDireita, Temp_SetaEsquerda, bip_tensao; // Variáveis necessárias para contagem de tempo em milis segundos das setas, pisca-alerta e alerta de tensão baixa da bateria
+float tensao = 0;
+// As variáveis do tipo boolena são iniciadas com 0 e alteram seu valor em 0 e 1 ao precionar os botões
+// As variáveis do tipo byte são iniciadas com 127 valor corresponedente ao envidos pelos joysticks em estado de repouso (centralizados).
+boolean SetaBaixo = 0;
+boolean BotaoR1 = 0;
+boolean BotaoL1 = 0;
+boolean BotaoL3 = 0;
+boolean BotaoTriangulo = 0;
+boolean BotaoCirculo = 0;
+boolean BotaoQuadrado = 0;
+boolean BotaoX = 0;
+byte JoyDireitaX = 127;
+byte JoyDireitaY = 127;
+byte JoyEsquerdaX = 127;
+byte JoyEsquerdaY = 127;
+
+
+
+void setup() {
+//Serial.begin(115200); // Inicia comunicação serial (para um melhor performance comente esta linha ao transferir o código definitivamente para o Arduino)
+erro = ps2x.config_gamepad(A4, A2, A3, A1, true, true); //Configura o controle para os pinos informados(clock, command, attention, data, Pressures?, Rumble?) e verifica se há algum erro
+
+
+if (erro == 0) {
+Serial.println("CONTROLE CONECTADO AO ARDUINO COM SUCESSO!");
+} else {
+Serial.println("ERRO! CONTROLE NÃO CONECTADO! VERIFIQUE AS CONEXÕES");
+}
+
+Serial.println("*** PROJETO MINI GOL RC - CÓDIGO TRANSMISSOR - CANAL ARDUINO PARA MODELISMO - PSII WIFI ***"); // Imprimindo na tela via serial o texto entre aspas
+servo.attach(2); // Informando que o servo motor está conectado ao pino digital 2 do Arduino
+
+pinMode(3, OUTPUT); // Leds - Farol
+pinMode(9, OUTPUT); // Leds - Lanterna/Luz Freio
+pinMode(10, OUTPUT); // Leds - Luz de Ré
+pinMode(4, OUTPUT); // Buzzer - Buzinha
+pinMode(5, OUTPUT); // Ponte H
+pinMode(6, OUTPUT); // Ponte H
+pinMode(7, OUTPUT); // Seta Direita
+pinMode(8, OUTPUT); // Seta Esquerda
+
+
+
+
+// Emite um bip ao ligar o receptor
+tone(4, 700, 100);
+delay(100);
+tone(4, 1300, 100);
+delay(500);
+tone(4, 700, 100);
+delay(100);
+tone(4, 1300, 100);
+delay(100);
+}
+
+
+
+void loop() {
+ps2x.read_gamepad(false, 0); //lê as informações enviadas pelo Controle PSII
+
+// USADO PARA O FREIO E PARA LUZ DE FREIO
+if (ps2x.ButtonPressed(PSB_PAD_DOWN)) { // BOTÃO SETA PARA BAIXO
+SetaBaixo = !SetaBaixo;
+Serial.print("Seta Baixo: ");
+Serial.println(SetaBaixo);
+
+
+
+
+if (SetaBaixo == HIGH) {
+digitalWrite(9, HIGH); // Acende LANTERNA
+} else {
+digitalWrite(9, LOW); // Apaga LANTERNA
+}
+}
+
+// USADO PARA SETA DIREITA
+if (ps2x.ButtonPressed(PSB_R1)) { // BOTÃO R1
+BotaoR1 = !BotaoR1;
+Serial.print("BotaoR1: ");
+Serial.println(BotaoR1);
+digitalWrite(7, LOW); // Apaga Seta Direita
+digitalWrite(8, LOW); // Apaga Seta Esquerda
+}
+
+
+
+
+if (BotaoR1 == HIGH) {
+if (BotaoTriangulo == LOW) {
+BotaoL1 = LOW; // Desabilita Seta Esquerda ao acionar a Seta Direita
+if (millis() - Temp_SetaDireita > 500) { // função millis no if faz acontagem de tempo que a seta deve ficar acesa (Acende/Apaga led a cada meio segundo)
+digitalWrite(7, !digitalRead(7)); // Ativa e desativa a porta digital 7 de acordo com a leitura do estado da própria porta (se estiver acesa, apaga. Se estiver apagada acende)
+tone(4, 30, 30);
+Temp_SetaDireita = millis();
+}
+}
+}
+
+
+
+// USADO PARA SETA ESQUERDA
+if (ps2x.ButtonPressed(PSB_L1)) { // BOTÃO L1
+BotaoL1 = !BotaoL1;
+Serial.print("BotaoL1: ");
+Serial.println(BotaoL1);
+digitalWrite(7, LOW); // Apaga Seta Direita
+digitalWrite(8, LOW); // Apaga Seta Esquerda
+}
+
+
+
+
+if (BotaoL1 == HIGH) {
+if (BotaoTriangulo == LOW) {
+BotaoR1 = LOW; // Desabilita Seta Direita ao acionar a Seta Esquerda
+if (millis() - Temp_SetaEsquerda > 500) { // função millis no if faz acontagem de tempo que a seta deve ficar acesa, nestecaso 500 milissegundos (Acende/Apaga led a cada meio segundo)
+digitalWrite(8, !digitalRead(8)); // Ativa e desativa a porta digital 8 de acordo com a leitura do estado da própria porta (se estiver acesa, apaga. Se estiver apagada acende)
+tone(4, 30, 30);
+Temp_SetaEsquerda = millis();
+}
+}
+}
+
+// USADO PARA MUDAR A VELOCIDADE DO MOTOR DE TRAÇÃO EM 2 NÍVEIS
+if (ps2x.ButtonPressed(PSB_L3)) { // BOTÃO L3 (BOTÃO DO JOYSTICK ANALÓGICO ESQUERDO)
+BotaoL3 = !BotaoL3;
+Serial.print("BotaoL3: ");
+Serial.println(BotaoL3);
+tone(4, 600, 100);
+}
+
+// USADO PARA PISCA-ALERTA
+if (ps2x.ButtonPressed(PSB_GREEN)) { // BOTÃO TRIANGULO
+BotaoTriangulo = !BotaoTriangulo;
+Serial.print("Botao Triangulo: ");
+Serial.println(BotaoTriangulo);
+digitalWrite(7, LOW); // Apaga Seta Direita
+digitalWrite(8, LOW); // Apaga Seta Esquerda
+}
+
+
+
+
+if (BotaoTriangulo == HIGH) {
+BotaoR1 = LOW; // Desabilita Seta Direita ao acionar Pisca-Alerta
+BotaoL1 = LOW; // Desabilita Seta Esquerda ao acionar Pisca-Alerta
+if (millis() - Temp_PiscaAlerta > 500) { // função millis no if faz acontagem de tempo que a seta deve ficar acesa, nestecaso 500 milissegundos (Acende/Apaga led a cada meio segundo)
+digitalWrite(7, !digitalRead(7)); // Ativa e desativa a porta digital 7 de acordo com a leitura do estado da própria porta (se estiver acesa, apaga. Se estiver apagada acende)
+digitalWrite(8, !digitalRead(8)); // Ativa e desativa a porta digital 8 de acordo com a leitura do estado da própria porta (se estiver acesa, apaga. Se estiver apagada acende)
+tone(4, 30, 30);
+Temp_PiscaAlerta = millis();
+}
+}
+
+// USADO PARA FAROL BAIXO
+if (ps2x.ButtonPressed(PSB_RED)) { // BOTÃO CÍRCULO
+BotaoCirculo = !BotaoCirculo;
+Serial.print("Botao Circulo: ");
+Serial.println(BotaoCirculo);
+
+
+
+
+if (BotaoCirculo == HIGH) {
+analogWrite(3, 100); // Aciona Farol Baixo
+digitalWrite(9, HIGH); // Acende LANTERNA
+} else {
+analogWrite(3, 0); // Desliga Farol
+BotaoQuadrado = LOW;
+digitalWrite(9, LOW); // Apaga LANTERNA
+}
+}
+
+// USADO PARA FAROL ALTO
+if (ps2x.ButtonPressed(PSB_PINK)) { // BOTÃO QUADRADO
+BotaoQuadrado = !BotaoQuadrado;
+Serial.print("Botao Quadrado: ");
+Serial.println(BotaoQuadrado);
+
+
+
+if (BotaoQuadrado == HIGH) {
+analogWrite(3, 255); // Aciona Farol Alto
+digitalWrite(9, HIGH); // Acende LANTERNA
+} else {
+analogWrite(3, 0); // Desliga Farol
+digitalWrite(9, LOW); // Apaga LANTERNA
+BotaoCirculo = LOW;
+}
+}
+
+// USADO PARA BUZINA *** PARA BUZINA FOI USADO O COMANDO ps2x.Button E NÃO ps2x.ButtonPressed PARA QUE A BUZINA SEJA ACIONADA APENAS ENQUANTO ESTIVERMOS PRECIONANDO O BOTÃO
+if (ps2x.Button(PSB_BLUE)) { // BOTÃO X
+BotaoX = !BotaoX;
+Serial.print("Botao X: ");
+Serial.println(BotaoX);
+tone(4, 600);
+}
+
+
+
+
+if (ps2x.ButtonReleased(PSB_BLUE)) {
+noTone(4);
+}
+
+// Analógicos
+if ((ps2x.Analog(PSS_LY) == 255) && (ps2x.Analog(PSS_LX) == 255) && (ps2x.Analog(PSS_RY) == 255) && (ps2x.Analog(PSS_RX) == 255)) {
+Serial.println("Erro de Leitura");
+} else {
+
+
+
+JoyDireitaX = ps2x.Analog(PSS_RX);
+JoyDireitaY = ps2x.Analog(PSS_RY);
+JoyEsquerdaX = ps2x.Analog(PSS_LX);
+JoyEsquerdaY = ps2x.Analog(PSS_LY);
+
+
+
+//Retire os Comentários para Exibir os Valores dos Joysticks Analógicos
+//Os valores estão comentados para não 'poluir' o monitor serial
+
+
+
+// Serial.print("Joy Direita X: ");
+// Serial.println( JoyDireitaX);
+// Serial.print("Joy Direita Y: ");
+// Serial.println( JoyDireitaY);
+// Serial.print("Joy Esquerda X: ");
+// Serial.println( JoyEsquerdaX);
+// Serial.print("Joy Esquerda Y: ");
+// Serial.println( JoyEsquerdaY);
+}
+
+
+
+// CONTROLE DE DIREÇÃO (SERVO MOTOR)
+int aux = 0; // variável para auxiliar na converasão dos valores dos joysticks de 0 a 255 para os valores utilizados nos servo motores e ponte H
+aux = map(JoyDireitaX, 0, 255, 10, 170);
+servo.write(aux); // Configura a posição do Servo de acordo com a posição do joystick (valor da variável aux)
+
+/*
+CONTROLE DE ACELERAÇÃO, FRENTE, RÉ E PARADO
+Para a elaboração do controle de aceleração, frente e ré foram levados em consideração os valores enviados pelo controle,
+que vai do valor minimo de 0 até o valor máximo 255, tendo o valor central do potenciômetro por volta de 127
+*/
+
+
+
+
+if (JoyEsquerdaY <= 125) { // FRENTE - quando o bastão do joystick virtual é empurado para cima (posição central é = 255, todo para cima = 0)
+if (BotaoL3 == false) {
+aux = map(JoyEsquerdaY, 125, 0, 20, 190); // Velocidade 01 - LENTA
+} else {
+aux = map(JoyEsquerdaY, 125, 0, 20, 255); // Velocidade 02 - RÁPIDA
+}
+analogWrite(5, LOW); // ativa pino ponte H com valor LOW para que o veículo ande para frente
+analogWrite(6, aux); // ativa pino ponte H com o valor da variável aux (controle de aceleração)
+
+digitalWrite(10, LOW); // Apaga Luz de Ré
+
+
+} else if (JoyEsquerdaY >= 130) { // RÉ - quando o bastão do joystick virtual é empurado para baixo (posição central é = 127, todo para baixo = 255)
+if (BotaoL3 == false) {
+aux = map(JoyEsquerdaY, 130, 255, 20, 190); // Velocidade 01 - LENTA
+} else {
+aux = map(JoyEsquerdaY, 130, 255, 20, 255); // Velocidade 02 - RÁPIDA
+}
+analogWrite(5, aux); // ativa pino ponte H com o valor da variável aux (controle de aceleração)
+analogWrite(6, LOW); // configura o pino ponte H com valor LOW para que o veículo ande para trás
+
+digitalWrite(10, HIGH); // Acende Luz de Ré
+
+} else { // MOTOR PARADO
+analogWrite(5, LOW); // desativa as duas portas da ponte h
+analogWrite(6, LOW); // desativa as duas portas da ponte h
+digitalWrite(10, LOW); // Apaga Luz de Ré
+}
+
+readVcc(); // Chamada à função que lê a tensão da bateria
+if (tensao < 3.6) { // Verifica se a tensão da bateria é menor que 3.6 volts
+if (millis() - bip_tensao > 10000) { // Se passaram mais de 10000 milissegundos desde o último bip de alerta:
+Serial.println("Tensao baixa, carregue a bateria"); // Imprime uma mensagem indicando tensão baixa no console Serial
+tone(4, 500, 100); // Emite um bip de alerta de tensão baixa
+delay(100);
+tone(4, 200, 200);
+delay(200);
+tone(4, 900, 100);
+bip_tensao = millis(); // Atualiza a variável bip_tensao com o tempo atual
+}
+}
+
+
+
+
+delay(20); // delay importante para o funcionamento da comunicação entre receptor ps2 e arduino
+}
+
+
+
+
+
+
+
+
+// Função para ler a tensão da alimentação da Bateria
+int readVcc() {
+// Configura o registrador ADMUX para medir a referência interna de 1.1V
+ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+
+delay(2); // Aguarda 2 milissegundos (tempo de estabilização)
+
+ADCSRA |= _BV(ADSC); // Inicia a conversão analógico-digital (AD)
+while (bit_is_set(ADCSRA, ADSC))
+; // Aguarda a conclusão da conversão
+
+uint8_t low = ADCL; // Lê primeiro o registrador ADCL - trava ADCH
+uint8_t high = ADCH; // Lê o registrador ADCH - destrava ADCH
+
+// Combina os valores lidos para obter o resultado da conversão
+tensao = (high << 8) | low;
+
+// Calcula a tensão em milivolts usando a fórmula: Vcc = 1125300 / tensao
+tensao = 1125300L / tensao;
+
+// Converte a tensão para volts dividindo por 1000
+tensao = tensao / 1000;
+
+
+// Limita a tensão máxima para 4.2V para evitar leituras incorretas
+if (tensao > 4.2) {
+tensao = 4.2;
+}
+
+// A leitura da tensão está disponível na variável global 'tensao'
+// Serial.println(tensao); // Ativação dessa linha imprimiria a tensão no console Serial (descomente se necessário)
+}
