@@ -1,0 +1,139 @@
+// =========================================================================
+#define ID_PROJETO   "24004E000_Mecatrônica Jovem Halloween Nave Jupiter 56"
+#define ID_ARQUIVO   "24004E000_MJhalloween_Jupiter56_V8.ino"
+#define ID_DATA      "10/12/2024"
+#define ID_AUTOR     "Evair Braga"
+#define ID_EVENTO    "MECATRÔNICA JOVEM - 2024"
+#define ID_DESCRICAO "TEMA EDIÇÃO DE HALLOWEEN"
+// =========================================================================
+//
+// INICIO - Bibliotecas usadas
+#include <TimerOne.h> // Biblioteca TimerOne por Stoyko Dimitrov, Jesse Tane, Jerome Despatis... V 1.1.1
+#include <ArduinoJson.h> // Biblioteca ArduinoJson por Bernoit Blanchon. V 7.2.1
+// FINAL - Bibliotecas usadas
+//
+// Define o tamanho máximo do documento JSON
+const int capacidade = JSON_OBJECT_SIZE(6) + 100; //JSON simples para 6 registros + 100 bytes extras.
+StaticJsonDocument<capacidade> cabecalho; // cria o objeto "cabecalho" com a capacidade acima especificada.
+//
+// INICIO - Variaveis de controle do Timer1. Controla a frequencia de saida no pino Digital 10. Funções da biblioteca TimerOne.h.
+const int pinoSaida10 = 10; // Define o nome do Pino digital 10.
+byte frequencia10Min = 5; // Frequencia minima na saida digital 10.
+byte frequencia10Max = 40; // Frequencia maxima na saida digital 10.
+byte frequencia10Inc = 1; // Incremento de frequencia para a saida digital 10.
+byte frequencia10 = frequencia10Min; // Inicializa a variável frequencia10 com o valor da frequencia minima.
+unsigned int tempoMudaFreq10 = 1000; // Tempo milisegundos, entre mudanças na frequencia do pino Digital 10.
+unsigned long tempoAgora = millis(); // Salva o tempo na variável tempoAgora em mS.
+// FINAL - Variaveis de controle do Timer1. Controle a frequencia de saida no pino Digital 10.
+//
+// INICIO - Variaveis de controle do Timer2. Controle a frequencia de saida no pino Digital 3. Configuração no código.
+const int pinoSaida3 = 3; // Define o nome do Pino digital 3.
+volatile bool ativarFrequencia3 = false;
+bool foiImpressa = false;
+volatile unsigned long tempo_inicio = 0;
+volatile unsigned long tempo_mudanca = 0;
+volatile byte frequencia3 = 1; // Frequencia inicial na saida digital 3.
+const byte frequencia3Max = 60; // Frequencia maxima na saida digital 3.
+const byte frequencia3Inc = 1; // Incremento de frequencia para a saida digital 3.
+volatile byte frequencia3Ant = frequencia3; // Frequencia anterior para comparação.
+const unsigned long tempoMudaFreq3 = 1000; // Tempo milisegundos, entre mudanças na frequencia do pino Digital 3.
+// FINAL - Variaveis de controle do Timer2. Controle a frequencia de saida no pino Digital 3
+//
+// INICIO - Variaveis de controle dos Leds Controle o Led da frente e da Cabine de comando no pino Digital 4.
+const int pinoSaida4 = 4; // Define o nome do Pino digital 4.
+// FINAL - Variaveis de controle dos Leds. Controle o Led da frente e da Cabine de comando no pino Digital 4.
+//
+void setup(void)
+{
+  Serial.begin(9600); // Inicializa a comunicação serial em 9600 BPS.
+  //
+  // IDENTIFICA O CÓDIGO NO MONITOR SERIAL - INICIO
+  cabecalho["Projeto"] = ID_PROJETO; // Cria o objeto JSON com as informações do cabeçalho.
+  cabecalho["Arquivo"] = ID_ARQUIVO; // Cria o objeto JSON com as informações do cabeçalho.
+  cabecalho["Data"] = ID_DATA; // Cria o objeto JSON com as informações do cabeçalho.
+  cabecalho["Autor"] = ID_AUTOR; // Cria o objeto JSON com as informações do cabeçalho.
+  cabecalho["Evento"] = ID_EVENTO; // Cria o objeto JSON com as informações do cabeçalho.
+  cabecalho["Descricao"] = ID_DESCRICAO; // Cria o objeto JSON com as informações do cabeçalho.
+  serializeJsonPretty(cabecalho, Serial); // // Formata arquivo JSON para o monitor serial. Biblioteca ArduinoJson.h.
+  Serial.println("========================================================================");
+  // IDENTIFICA O CÓDIGO NO MONITOR SERIAL - FIM
+  //
+  // Inicializa o Timer1 e os Pinos Digitais
+  Timer1.initialize(40);  // 40 us = 25 kHz Inicializa o TimerOne.
+  pinMode(pinoSaida3, OUTPUT); digitalWrite(pinoSaida3, LOW); // Define o Pino 3 como Saida e em LOW
+  pinMode(pinoSaida10, OUTPUT); digitalWrite(pinoSaida10, LOW); // Define o Pino 10 como Saida e em LOW
+  pinMode(pinoSaida4, OUTPUT); digitalWrite(pinoSaida4, LOW); // Define o Pino 4 como Saida e em LOW
+  //
+  // Configuração do tempo entre interrupções do Timer2 para o maior período possível.
+  // Periodo = (1 / (160000000 / 64)) x (255 + 1) = 0,001024 segundos = 1,024 mS.
+  TCCR2A = 0; // Zera o registro de controle A do Timer2.
+  TCCR2B = bit(CS22) | bit(CS21); // Define o Prescaler do Timer2. Divide a frequencia de clock por 64
+  OCR2A = 255; // Define o registro de comparação para 255.
+  TIMSK2 |= bit(OCIE2A); // Ativa a interrupção por comparação do timer2.
+  sei(); // Habilita as interrupções globalmente.
+}
+//
+void loop(void)
+{
+  tempoAgora = millis(); // Salva o tempo no inicio do loop na variável tempoAgora em mS.
+  while (frequencia10 <= frequencia10Max && ativarFrequencia3 == false) // Enquanto a frequencia for menor/igual a maxima e PWM no pino 3 estiver desligado. 
+  {
+    if (millis() - tempoAgora >= tempoMudaFreq10) // Se passou o tempo definido para aumentar a frequencia.
+    {
+      PWMPinoFrequencia(pinoSaida10, frequencia10); // Envia para função gera PWM, o Pino Digital e a frequencia do PWM.
+      tempoAgora = millis(); // Atualiza o tempo, aguandando o momento de aumentar a frequencia novamente.
+      frequencia10 += frequencia10Inc; // Incrementa a frequencia.
+    }
+  }
+  //
+  ativarFrequencia3 = true; // Ativar frequencias no pino Digital 3. Gerando PWM, quando ocorrer uma interrupção no Timer2.
+  //
+  if (frequencia3 <= frequencia3Max && frequencia3 > frequencia3Ant) // Se a frequencia aumentou e está menor/igual ao máximo definido.
+  {
+    Serial.print("Frequencia no pino digital "); // Imprimi no Monitor Serial.
+    Serial.print(pinoSaida3); // Imprimi no Monitor Serial.
+    Serial.print(".: "); // Imprimi no Monitor Serial.
+    Serial.print(frequencia3 * 1.00, 2); // Imprimi no Monitor Serial.
+    Serial.println(" Hz"); // Imprimi no Monitor Serial.
+    //
+    frequencia3Ant = frequencia3; // Atualiza a frequencia atual na variável, para uma nova comparação evitando a impressão Serial repetida. 
+  }
+  if (frequencia3 == frequencia3Max) // Se a frequencia no pino Digital 3 chegou no maximo.
+  {
+    digitalWrite(pinoSaida4, HIGH); // Ligar Led do farol e da Cabine na Saida DIgital 4.
+    if (!foiImpressa) // Se não foi Impressa. imprimi no Monitor Serial somente uma vez.
+    {
+      Serial.println("Led lateral azul e led da cabine ligados!");
+      Serial.println("Nave Jupiter 56 pronta para decolar!");
+      foiImpressa = true; // Sim. Já foi enviada ao monitor Serial.
+    }
+  }
+}
+ISR(TIMER2_COMPA_vect) // Rotina a ser executada sempre que acontecer uma interrupção no Timer2.
+{
+  unsigned long tempo_atual = millis(); //Salva o tempo atual na variavel tempo_atual.
+  //
+  // Lógica para o PWM
+  if (ativarFrequencia3) // Se ativarFrequencia3 for igual a verdadeiro (true).
+  {
+      if (tempo_atual - tempo_inicio >= 1000 / (frequencia3 * 2)) // Se passou o tempo(em milisegundos) correspondente a frequencia(em Hz).
+      {
+        digitalWrite(pinoSaida3, !digitalRead(pinoSaida3)); // Inverte o estado lógico do pino digital. Low/High High/Low.
+        tempo_inicio = tempo_atual; // Atualiza o tempo_inicio com o tempo_atual. Aguardando a próxima iteração.
+        if (tempo_atual - tempo_mudanca >= tempoMudaFreq3) // verifica de o tempo entre mudanças de frequencia foi atingido.
+        {
+          frequencia3 = min(frequencia3 + frequencia3Inc, frequencia3Max); // Incrementa em 2Hz a frequencia até atingir o maximo estipulado por frequencia3Max.
+          tempo_mudanca = tempo_atual; // Atualiza o tempo da ultima mudança de frequencia com o tempo atual. Aguardando o próximo ciclo.
+        }
+      }
+  }
+}
+void PWMPinoFrequencia(int pin, float freq) // Função para gerar PWM em Pino Digital e frequencia informadas. O DutyCycle é fixo em 50%.
+{
+  Timer1.pwm(pin, 512, (1 / freq) * 1000000); // Função da biblioteca TimerOne.h.
+  Serial.print("Frequencia no pino digital "); // Imprimi no Monitor Serial.
+  Serial.print(pin); // Imprimi no Monitor Serial.
+  Serial.print(": "); // Imprimi no Monitor Serial.
+  Serial.print(freq); // Imprimi no Monitor Serial.
+  Serial.println(" Hz"); // Imprimi no Monitor Serial.
+}
