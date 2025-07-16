@@ -1,0 +1,94 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+
+// LCD
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Servo
+Servo meuServo;
+
+// Botões
+const int botaoEsquerda = 2;
+const int botaoDireita = 3;
+const int botaoFimCurso = 4;
+
+// Controle
+bool girando = false;
+unsigned long tempoInicio = 0;
+const unsigned long tempoGiro = 2000; // 2 segundos
+
+int direcao = 90;  
+bool bueiroCheio = false;
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+
+  meuServo.attach(9);
+  meuServo.write(90);
+
+  pinMode(botaoEsquerda, INPUT_PULLUP);
+  pinMode(botaoDireita, INPUT_PULLUP);
+  pinMode(botaoFimCurso, INPUT_PULLUP);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Tudo OK");
+}
+
+void loop() {
+  // Servo sempre pode girar
+  if (!girando) {
+    if (digitalRead(botaoEsquerda) == LOW) {
+      girarServo(60);
+    } else if (digitalRead(botaoDireita) == LOW) {
+      girarServo(120);
+    }
+  } else if (millis() - tempoInicio >= tempoGiro) {
+    pararServo();
+  }
+
+  // Verifica botão fim de curso
+  if (digitalRead(botaoFimCurso) == LOW) {
+    if (!bueiroCheio) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Bueiro cheio");
+      bueiroCheio = true;
+    }
+  } else {
+    if (bueiroCheio) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Tudo OK");
+      bueiroCheio = false;
+    }
+  }
+}
+
+void girarServo(int angulo) {
+  meuServo.write(angulo);
+  direcao = angulo;
+  girando = true;
+  tempoInicio = millis();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Girando...");
+  lcd.setCursor(0, 1);
+  lcd.print(angulo < 90 ? "Esquerda" : "Direita");
+}
+
+void pararServo() {
+  meuServo.write(90);
+  girando = false;
+
+  if (!bueiroCheio) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Tudo OK");
+  }
+}
+
+
+
