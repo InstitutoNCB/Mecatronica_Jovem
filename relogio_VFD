@@ -1,0 +1,227 @@
+/*
+ * PROJETO: Relógio VFD alfanumérico com 74HC595
+ * Esse sketch pode ser configurado para display de 7, 14 e 16 segmentos
+ * By Julian C Braga                    e-mail: julian_braga@hotmail.com
+*/
+
+#include <Arduino.h>
+
+// --- CONFIGURAÇÃO DE HARDWARE ---
+const int SRCLK_PIN = 8;
+const int RCLK_PIN  = 7;
+const int SER_PIN   = 6;
+
+#define NUM_CHIPS      3      // Total de 74HC595 (3 chips = 24 saídas)
+#define NUM_DIGITS     6      // Quantidade de grades ativas
+#define SEG_ACTIVE     LOW    // Nível para ligar segmentos (VFD = LOW)
+#define DIG_ACTIVE     LOW    // Nível para ligar grades (VFD = LOW)
+
+// =============================================================================
+// MAPEAMENTO DAS SAÍDAS (Q0 até Q23)
+// Nomeie como quiser. Use "G1", "G2"... para grades e nomes curtos para segmentos.
+// Use "" para pinos não conectados.
+// =============================================================================
+const char* Q_MAP[] = {
+  "dot_u", "dot_l",    "j",    "a",    "b",    "c",    "d",    "e",  // Q0  a Q7  (Chip 1)
+  "f"    ,     "g",    "k",    "l",    "p",    "n",    "m",   "G6",  // Q8  a Q15 (Chip 2)
+  "G5"   ,    "G4",   "G3",   "G2",   "G1",     "",     "",     ""   // Q16 a Q23 (Chip 3)
+};
+
+// =============================================================================
+// DESENHO DOS CARACTERES
+// Use EXATAMENTE os nomes que você definiu acima, separados por vírgula.
+// =============================================================================
+const char* getPattern(char c) {
+  switch (toupper(c)) {
+    // Exemplo: O numero 5 usa os segmentos a, c, g, f, g
+    case '0': return "a,b,c,d,e,f";
+    case '1': return "b,c";
+    case '2': return "a,b,d,e,g";
+    case '3': return "a,b,c,d,g";
+    case '4': return "b,c,f,g";
+    case '5': return "a,c,d,f,g";
+    case '6': return "a,c,d,e,f,g";
+    case '7': return "a,b,c";
+    case '8': return "a,b,c,d,e,f,g";
+    case '9': return "a,b,c,d,f,g";
+    case 'A': return "a,b,c,e,f,g";
+    case 'B': return "a,b,c,d,g,k,n";
+    case 'C': return "a,d,e,f";
+    case 'D': return "a,b,c,d,k,n";
+    case 'E': return "a,d,e,f,g";
+    case 'F': return "a,e,f,g";
+    case 'G': return "a,c,d,e,f,g";
+    case 'H': return "b,c,e,f,g";
+    case 'I': return "a,d,k,n";
+    case 'J': return "b,c,d,e";
+    case 'K': return "k,l,n,m";
+    case 'L': return "d,e,f";
+    case 'M': return "b,c,e,f,j,l";
+    case 'N': return "b,c,e,f,j,m";
+    case 'O': return "a,b,c,d,e,f";
+    case 'P': return "a,b,e,f,g";
+    case 'Q': return "a,b,c,d,e,f,m";
+    case 'R': return "a,b,e,f,g,m";
+    case 'S': return "a,c,d,f,g";
+    case 'T': return "a,k,n";
+    case 'U': return "b,c,d,e,f";
+    case 'V': return "e,f,l,p";
+    case 'W': return "b,c,e,f,p,m";
+    case 'X': return "j,l,p,m";
+    case 'Y': return "b,f,g,n";
+    case 'Z': return "a,d,l,p";
+    case '-': return "g";
+    case ' ': return "";
+    default:  return "";
+  }
+}
+
+// --- LÓGICA DO SISTEMA ---
+
+int horas = 12, minutos = 0, segundos = 0;
+unsigned long lastMillis = 0;
+
+uint8_t registro[NUM_CHIPS];
+char displayBuffer[NUM_DIGITS + 1] = "      ";
+bool showDots = false;
+
+void limparBuffer() {
+  uint8_t desativado = (SEG_ACTIVE == LOW) ? 0xFF : 0x00;
+  for (int i = 0; i < NUM_CHIPS; i++) registro[i] = desativado;
+}
+
+// Procura o nome do segmento no mapa e altera o bit correspondente
+void setPinoPorNome(const char* nome, bool estado, bool isGrade = false) {
+  if (strlen(nome) == 0) return;
+
+  for (int i = 0; i < (NUM_CHIPS * 8); i++) {
+    if (strcmp(Q_MAP[i], nome) == 0) {
+      int chip = i / 8;
+      int bit = i % 8;
+      bool nivel = isGrade ? (estado ? DIG_ACTIVE : !DIG_ACTIVE) : (estado ? SEG_ACTIVE : !SEG_ACTIVE);
+      
+      if (nivel == HIGH) registro[chip] |= (1 << bit);
+      else registro[chip] &= ~(1 << bit);
+      return; 
+    }
+  }
+}
+
+void enviarHardware() {
+  digitalWrite(RCLK_PIN, LOW);
+  for (int i = NUM_CHIPS - 1; i >= 0; i--) {
+    shiftOut(SER_PIN, SRCLK_PIN, MSBFIRST, registro[i]);
+  }
+  digitalWrite(RCLK_PIN, HIGH);
+}
+
+void atualizarDisplay() {
+  for (int d = 0; d < NUM_DIGITS; d++) {
+    limparBuffer();
+
+    // 1. Desenha Segmentos (Processa string separada por vírgula)
+    char patternCopy[64]; 
+    strcpy(patternCopy, getPattern(displayBuffer[d]));
+    char* seg = strtok(patternCopy, ",");
+    while (seg != NULL) {
+      setPinoPorNome(seg, true);
+      seg = strtok(NULL, ",");
+    }
+
+    // 2. Pontos (Lógica para os separadores do relógio)
+    if (d == 2 && showDots) {
+      setPinoPorNome("dot_u", true);
+      setPinoPorNome("dot_l", true);
+    }
+
+    // 3. Ativa a Grade correspondente (G1, G2...)
+    char nomeGrade[4];
+    sprintf(nomeGrade, "G%d", d + 1);
+    setPinoPorNome(nomeGrade, true, true);
+
+    enviarHardware();
+    delayMicroseconds(2000); // Brilho
+  }
+}
+
+// --- FUNÇÕES DE TEXTO ---
+
+void escreverRolante(const char* texto, int velocidade) {
+  int tam = strlen(texto);
+  int totalLen = tam + (NUM_DIGITS * 2);
+  char temp[totalLen + 1];
+
+  for(int i=0; i<NUM_DIGITS; i++) temp[i] = ' ';
+  strcpy(temp + NUM_DIGITS, texto);
+  for(int i=0; i<NUM_DIGITS; i++) temp[NUM_DIGITS + tam + i] = ' ';
+  temp[totalLen] = '\0';
+
+  for (int i = 0; i <= tam + NUM_DIGITS; i++) {
+    unsigned long timeout = millis() + velocidade;
+    while (millis() < timeout) {
+      for (int j = 0; j < NUM_DIGITS; j++) displayBuffer[j] = temp[i + j];
+      atualizarDisplay();
+    }
+  }
+}
+
+void checarSerial() {
+  if (Serial.available() > 0) {
+    // Lê a string até o final da linha
+    String entrada = Serial.readStringUntil('\n');
+    entrada.trim(); // Remove espaços ou \r
+
+    int h, m, s;
+    // Tenta parsear o formato HH:MM:SS
+    if (sscanf(entrada.c_str(), "%d:%d:%d", &h, &m, &s) == 3) {
+      if (h >= 0 && h < 24 && m >= 0 && m < 60 && s >= 0 && s < 60) {
+        horas = h;
+        minutos = m;
+        segundos = s;
+        Serial.print("Hora ajustada para: ");
+        Serial.println(entrada);
+      } else {
+        Serial.println("Erro: Valores de tempo invalidos!");
+      }
+    } else {
+      Serial.println("Erro: Use o formato HH:MM:SS");
+    }
+  }
+}
+void setup() {
+  Serial.begin(9600); // Inicia Serial
+  pinMode(SRCLK_PIN, OUTPUT);
+  pinMode(RCLK_PIN, OUTPUT);
+  pinMode(SER_PIN, OUTPUT);
+  
+  Serial.println("Sistema Iniciado. Digite a hora no formato HH:MM:SS para ajustar.");
+
+  escreverRolante("RELOGIO VFD PROJETO DOS ANOS 80 MECATRONICA JOVEM", 250);
+}
+
+void loop() {
+// 1. Escuta a Serial
+  checarSerial();
+
+  // 2. Lógica do Relógio (Incremento de tempo)
+  if (millis() - lastMillis >= 1000) {
+    lastMillis = millis();
+    segundos++;
+    showDots = !showDots; // Pisca os pontos
+    
+    if (segundos >= 60) { segundos = 0; minutos++; }
+    if (minutos >= 60) { minutos = 0; horas++; }
+    if (horas >= 24) { horas = 0; }
+
+    // Atualiza o buffer com os novos valores
+    displayBuffer[0] = (horas / 10) + '0';
+    displayBuffer[1] = (horas % 10) + '0';
+    displayBuffer[2] = (minutos / 10) + '0';
+    displayBuffer[3] = (minutos % 10) + '0';
+    displayBuffer[4] = (segundos / 10) + '0';
+    displayBuffer[5] = (segundos % 10) + '0';
+  }
+
+  // 3. Mantém o display aceso (Multiplexação)
+  atualizarDisplay();
+  }
