@@ -1,0 +1,141 @@
+#!/usr/bin/python3
+
+#------------------------------------------------------------------------------
+# Programa - SeqLuz_UDP.py
+# Teste de envio e recepção de pacotes UDP usando Python para Sequencial ESP01
+#
+# Desenvolvido por: Eng. Márcio José Soares
+# versão 1.0 - 27/02/2026
+#
+# Python 3.12.3
+# Para saber o IP do ESP01:  # sudo nmap -sn 192.168.1.0/24 | grep -B 2 "Espressif"
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Libs incluidas
+#------------------------------------------------------------------------------
+import socket
+import sys
+
+#------------------------------------------------------------------------------
+# Vars
+#------------------------------------------------------------------------------
+ESP_HOSTNAME = "sequencial.local" # Nome definido no ESP01
+ESP_IP = None # Começa vazio
+ESP_PORT = 2390
+
+# Mapeamento dos seus efeitos (Hex para Decimal amigável)
+EFEITOS = {
+    '1': 0x2E,
+    '2': 0x3E,
+    '3': 0x4E,
+    '4': 0x8E
+}
+
+prima = 0
+
+#------------------------------------------------------------------------------
+# Função para descobrir o IP do ESP01
+#
+# Entradas - nenhuma
+# Saídas   - nenhuma
+#------------------------------------------------------------------------------
+def atualizar_ip_esp():
+    global ESP_IP
+    try:
+        # Tenta resolver o nome para IP
+        ESP_IP = socket.gethostbyname(ESP_HOSTNAME)
+        return True
+    except socket.gaierror:
+        print(f"⚠️ Não encontrei o dispositivo '{ESP_HOSTNAME}' na rede.")
+        return False
+
+
+#------------------------------------------------------------------------------
+# Função enviar pacotes
+#
+# Entradas - efeito e tempo
+# Saídas   - nenhuma
+#------------------------------------------------------------------------------
+def enviar_pacote(efeito, tempo):
+
+    global prima, ESP_IP
+
+    # IP do ESP01 não vazio?! tenta descobrir e preenche
+    if ESP_IP is None:
+        if not atualizar_ip_esp():
+            print("❌ Abortando: IP do ESP01 é desconhecido.")
+            return
+
+    # Montando o pacote binário conforme seu protocolo:
+    # <HEADER 0x02> <EFEITO> <TEMPO> <CR 0x0D> <LF 0x0A>
+    header = 0x02
+    cr = 0x0D
+    lf = 0x0A
+
+    tempo_msb = (tempo >> 8) & 0xFF  # Desloca 8 bits para a direita (pega a parte alta)
+    tempo_lsb = tempo & 0xFF         # Máscara 0xFF (pega a parte baixa)
+    # Criando o array de bytes
+    pacote = bytes([header, efeito, tempo_msb, tempo_lsb, cr, lf])
+
+    # Criando o socket UDP
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0) # timeout para não travar se IP ESP mudar
+
+    try:
+        print(f"Tentando enviar para: {ESP_HOSTNAME} ({ESP_IP})")
+        sock.sendto(pacote, (ESP_IP, ESP_PORT))
+        pacote_hex = ' '.join(f'0x{b:02X}' for b in pacote)
+        print(f"✅ Enviado: Efeito=0x{efeito:02X}, Tempo={tempo}ms, Pacote: {pacote_hex}")
+        if prima == 0:          # primeira vez sempre envia duas vezes o pacote!
+            sock.sendto(pacote, (ESP_IP, ESP_PORT))
+            prima = 1
+
+    except Exception as e:
+        print(f"❌ Erro ao enviar: {e}")
+    finally:
+        sock.close()
+
+#------------------------------------------------------------------------------
+# Função main
+#
+# Entradas - argumentos
+# Saídas   - nenhuma
+#------------------------------------------------------------------------------
+def main(args):
+
+    print("--------------------------------------------")
+    print("--- Console de Controle ESP-01 (UDP)     ---")
+    print("--- by Eng. Marcio Jose Soares - Arne ;) ---")
+    print(f"--- Alvo: {ESP_IP}:{ESP_PORT}              ---")
+    print("--------------------------------------------\n")
+
+    while True:
+
+        print("Escolha o Efeito:")
+        print("1 - Sequ. Vai | 2 - Sequ. Vem | 3 - Sequ. Vai e Vem | 4 - Sequ. 2 a 2 | Q - Sair")
+
+        opcao = input("\nOpção > ").upper()
+
+        if opcao == 'Q':
+            break
+
+        if opcao in EFEITOS:
+            try:
+                # tempo deve estar entre 50 e 350
+                t = int(input("Tempo (ms): "))
+
+                if 50 <= t <= 350:
+                    enviar_pacote(EFEITOS[opcao], t)
+                else:
+                    print("⚠️ O tempo deve ser entre 50 e 350.")
+            except ValueError:
+                print("⚠️ Digite um número válido para o tempo.")
+        else:
+            print("⚠️ Opção inválida!")
+        print("-" * 40)
+
+#------------------------------------------------------------------------------
+# Fim
+if __name__=="__main__":
+    main(sys.argv[1:0])
