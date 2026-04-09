@@ -1,0 +1,363 @@
+//*****************************************************************************
+// Projeto Sequencial de Lâmpadas com ESP01 - controle de quatro canais
+//
+// Desenvolvido por: Eng. Márcio José Soares
+// Inspirado nos projetos:
+//      Super Sequencial de 10 canais - Revista Saber Eletrônica nr83 de Julho/1979
+//      Sequencia de 4 canais - Revista Saber Eletrônica nr105 de Junho de 1981
+//      Sequencial de 4 canais com velocidade automática - Revista Eletrônica Total nr09 de 1989
+//
+//*****************************************************************************
+// Recebe comandos via protocolo UDP
+//
+// Plataforma: ESP01 - ESP8266
+// Extra     : PCF8574 para ampliar as I/Os
+// Compilador: Arduino-cli (Linux)
+// IDE       : Kate (Linux)
+//
+//*****************************************************************************
+// Comandos:
+//
+// Compilar:
+// ~/Arduino-cli/arduino-cli compile -v --fqbn esp8266:esp8266:generic SeqLuz_ESP01.ino
+//
+// Upload:
+// ~/Arduino-cli/arduino-cli upload -v -p /dev/ttyUSB2 --fqbn esp8266:esp8266:generic SeqLuz_ESP01.ino
+//
+//*****************************************************************************
+// Pinos utilizados
+// GPIO01 0 - SDA (PCF8574)
+// GPIO03 2 - SCL (PCF8574)
+//
+//*****************************************************************************
+
+//*****************************************************************************
+// Arquivos includos no modulo
+//*****************************************************************************
+#include "ESP8266WiFi.h"
+#include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
+#include <Arduino.h>
+#include <Wire.h>
+
+//*****************************************************************************
+// Configuraçao para rede Wifi
+//
+// Formato do arquivo rede.h
+//
+// #ifndef STASSID
+// #define STASSID "nome da sua rede" (com aspas)
+// #define STAPSK  "senha da sua rede" (com aspas)
+// #endif
+//*****************************************************************************
+#include "rede.h"                       //contem informaçao da rede
+
+//*****************************************************************************
+// Pinos de I/O
+//*****************************************************************************
+#define SDA 1
+#define SCL 3
+
+//******************************************************************************
+// Macros para pinos de I/O
+//******************************************************************************
+
+//******************************************************************************
+// Outras definições importantes
+//******************************************************************************
+#define HEADER      0x02                // protocolo
+#define CR          0x0D
+#define LF          0x0A
+
+#define POSHEADER   0                   // posição dos bytes
+#define POSEFECT    1
+#define POSTIMEMSB  2
+#define POSTIMELSB  3
+#define POSCR       4
+#define POSLF       5
+#define TAMPACKET   POSLF+1             // tamanho total do pacote de comando
+
+// Efeitos
+#define _ONGO       0x2E                // 46 - vai
+#define _ONRET      0x3E                // 62 - volta
+#define _BACKFORW   0x4E                // 78 - vai e volta
+#define _2by2       0x8E                // 142 - dois a dois
+
+//Temporizações
+#define T500ms      50                  // tempo de 10ms x 50 = 500ms
+#define T15s        30                  // tempo de 500ms x 30 = 15s
+
+//I2C
+#define PCFADDRESS  0x27                // endereço I2C
+#define TIMEI2C     3000                // tempo em ms para aguardar I2C
+#define FREQI2C     100000              // 100kHz
+
+//******************************************************************************
+// Constantes
+//******************************************************************************
+const char * ssid = STASSID;                // nome da rede wifi
+const char * pass = STAPSK;                 // sennha
+
+const int UDP_PACKET_SIZE = 64;             // tamanho maximo do pacote UDP recebido
+
+const int minTimeEfect = 50;                // tempo mínimo para efeito ms
+const int maxTimeEfect = 350;               // tempo máximo para efeito ms
+
+//******************************************************************************
+// Variáveis
+//******************************************************************************
+WiFiUDP udp;                                // instancia UDP
+unsigned int localPort = 2390;              // porta para bind UDP - msgs enviadas pela central
+
+volatile int time500ms = 0;                 // temporizações
+volatile int time1s = 0;
+volatile int time15s = 0;
+
+char myUDPpacket[UDP_PACKET_SIZE];          // buffer para o pacote UDP
+int lenUDPpacket = 0;                       // tamanho do pacote UDP
+bool wificonnected = false;                 // inicia sempre não conectado
+uint8_t nrTentativasConect = 0;             // tentativas na conexão
+
+int timeControl = 0;                        // tempo de controle
+int timeEfect = maxTimeEfect;               // tempo máximo
+unsigned long lastCheck = 0;                // usado em millis
+
+uint8_t Efect = _ONGO;                      // tipo do efeito
+uint8_t bCtrlEfect = 0x01;                  // byte de controle do efeito
+bool myBackForw = true;                     // usado no efeito vai e volta
+
+//******************************************************************************
+// Declara funções do módulo
+//******************************************************************************
+void tryToConnect(void);
+void configuraI2C(void);
+void sendI2C(uint8_t addr, uint8_t data);
+void doEfect(int efeito);
+void trataUDPpacket(void);
+
+//******************************************************************************
+// Funções
+//******************************************************************************
+
+//*****************************************************************************
+// Funçao para conectar na rede Wifi
+//
+// Entradas - nenhuma
+// Saidas   - nenhuma
+//*****************************************************************************
+void tryToConnect(void){
+
+    nrTentativasConect = 0;                         // zera nr de tentativas
+    wificonnected = false;                          // avisa que não está conectado
+    WiFi.disconnect();                              // desconecta
+    delay(2000);                                    // aguarda
+
+    WiFi.mode(WIFI_STA);                            // modo
+    WiFi.begin(ssid, pass);                         // inicia
+
+    while (WiFi.status() != WL_CONNECTED) {         // aguarda conectar
+        delay(500);                                 // aguarda
+        nrTentativasConect++;                       // incrementa
+        if(nrTentativasConect >= 50){               // e verifica se chegou ao nr máximo
+            wificonnected = false;                  // avisa que não conectou
+            break;                                  // sai
+        }
+    }
+
+    if(WiFi.status() == WL_CONNECTED){              // se está conectado
+
+        if (MDNS.begin("sequencial")) {            // O ESP será encontrado como "sequencial.local"
+            Serial.println("mDNS iniciado");
+        }
+
+        for(uint8_t i=0;i<4;i++){
+            sendI2C(PCFADDRESS,~0xAA);              // envia dado
+            delay(500);                             // aguarda
+            sendI2C(PCFADDRESS,~0x00);              // envia dado
+            delay(500);                             // aguarda
+        }
+        wificonnected = true;                       // avisa que está conectado
+        udp.begin(localPort);                       // inicia comunicação udp para receber comandos
+    }
+    else{
+        wificonnected = false;                      // não conectou
+    }
+
+}
+
+//*****************************************************************************
+// Funçao para configurar o I2C
+//
+// Entradas - nenhuma
+// Saidas   - nenhuma
+//*****************************************************************************
+void configuraI2C(void){
+
+    Wire.begin(SDA, SCL);                           // TX como SDA (1) e RX como SCL (3)
+    Wire.setClock(FREQI2C);                         // 100kHz
+    Wire.setClockStretchLimit(TIMEI2C);             // proteção contra travamento
+}
+
+//*****************************************************************************
+// Funçao para enviar dado para o I2C
+//
+// Entradas - endereço e dado
+// Saidas   - nenhuma
+//*****************************************************************************
+void sendI2C(uint8_t addr, uint8_t data){
+
+    Wire.beginTransmission(addr);                   // inicia comunicação
+    Wire.write(data);                               // envia byte
+    byte erro = Wire.endTransmission();             // finaliza transmissão
+
+    if (erro != 0) {
+        configuraI2C();                             // reconfigura
+        delay(10);                                  // pausa para o PCF8574 "respirar"
+        Wire.beginTransmission(addr);               // envia novamnte
+        Wire.write(data);
+        Wire.endTransmission();
+    }
+}
+
+//*****************************************************************************
+// Funçao para fazer os efeitos
+//
+// Entradas - nenhuma
+// Saidas   - nenhuma
+//*****************************************************************************
+void doEfect(void){
+
+    sendI2C(PCFADDRESS,~bCtrlEfect);
+
+    switch(Efect){                                  // prepara novo byte
+        case _ONGO:                                 // sequencial ida
+            bCtrlEfect <<= 0x01;                    // shift a esquerda
+            if(bCtrlEfect >= 0x10 || bCtrlEfect == 0)   // chegou ao fim, volta
+                bCtrlEfect = 0x01;
+            break;
+        case _ONRET:                                // sequencial volta
+            bCtrlEfect >>= 0x01;                    // shift a direita
+            if(bCtrlEfect <= 0x00)                  // chegou ao fim volta
+                bCtrlEfect = 0x08;
+            break;
+        case _BACKFORW:                             // sequencial vai e volta
+            if(myBackForw){                         // esta na ida?
+                bCtrlEfect <<= 0x01;                // shift a esquerda
+                if(bCtrlEfect >= 0x10 || bCtrlEfect == 0){  // chegou ao fim, prepara a volta
+                    bCtrlEfect = 0x04;              // mas sempre tirando 1
+                    myBackForw = false;
+                }
+            }
+            else{                                   // esta na volta
+                bCtrlEfect >>= 0x01;                // shift a direita
+                if(bCtrlEfect <= 0x00){             // chegou ao fim, prepara a ida
+                    bCtrlEfect = 0x02;              // sempre somando 1
+                    myBackForw = true;
+                }
+            }
+            break;
+        case _2by2:                                 // acende 2 a dois
+            if(bCtrlEfect == 0x05){                 // se 0101
+                bCtrlEfect = 0x0A;                  // passa a ser 1010
+            }
+            else{                                   // mas se 1010
+                bCtrlEfect = 0x05;                  // passa a ser 0101
+            }
+            break;
+        default:
+            bCtrlEfect <<= 0x01;                    // shift a esquerda
+            if(bCtrlEfect == 0x10)                  // chegou ao fim, volta
+                bCtrlEfect = 0x01;
+    }
+
+}
+
+//*****************************************************************************
+// Funçao para tratar pacote UDP recebido
+//
+// Entradas - nenhuma
+// Saidas   - nenhuma
+//*****************************************************************************
+void trataUDPpacket(void){
+
+    uint16_t tempo = (uint16_t)myUDPpacket[POSTIMEMSB];                     // separa tempo
+    tempo <<= 0x08;                                                         // são dois bytes
+    tempo |= (uint16_t)myUDPpacket[POSTIMELSB];
+
+    if(myUDPpacket[POSHEADER] == HEADER){                                 // recebeu Header válido?
+        if(myUDPpacket[POSEFECT] >= _ONGO && myUDPpacket[POSEFECT] <= _2by2){   // efeito dentro
+            if(tempo >= minTimeEfect && tempo <= maxTimeEfect){             // time dentro
+                if(myUDPpacket[POSCR] == CR && myUDPpacket[POSLF] == LF){   // finalizadores ok
+                    Efect = myUDPpacket[POSEFECT];                          // atualiza efeito
+                    timeEfect = (int)tempo;                                 // atualiza tempo
+                    timeControl = 0;                                        // zera contador
+                    switch(Efect){                               // atualiza byte de efeito inicial
+                        case _ONGO:
+                            bCtrlEfect = 0x01;
+                            break;
+                        case _ONRET:
+                            bCtrlEfect = 0x08;
+                            break;
+                        case _BACKFORW:
+                            bCtrlEfect = 0x01;
+                            myBackForw = true;
+                            break;
+                        case _2by2:
+                            bCtrlEfect = 0x05;
+                            break;
+                        default:
+                            bCtrlEfect = 0x01;
+                    }
+                }
+            }
+        }
+    }
+}
+
+//*****************************************************************************
+// Setup
+//*****************************************************************************
+void setup(void){
+
+    delay(5000);                            // aguarda para evitar lixo no SDA
+
+    ESP.wdtEnable(WDTO_4S);                 // Habilita Watchdog - 4 segundos
+
+    configuraI2C();                         // configura I2C
+    sendI2C(PCFADDRESS,0xFF);               // limpa canal!
+
+    //*************************************************************************
+    // Tenta conectar na rede
+    while(!wificonnected){                  // se não esta conectado
+        tryToConnect();                     // tenta conectar
+        delay(500);                         // aguarda
+    }
+
+}
+
+//*****************************************************************************
+// Laço principal
+//*****************************************************************************
+void loop(void) {
+
+    ESP.wdtFeed();                                   // Alimenta o watchdog no início de cada loop
+
+    MDNS.update();                                   // mantém o serviço ativo via DNS
+
+    if ((millis() - lastCheck) >= 10) {             // verifica se passaram 10ms
+        lastCheck = millis();                       // atualiza
+        timeControl++;                              // incrementa
+        if(timeControl >= (timeEfect/5)){           // agora divite o tempo...
+            timeControl = 0;                        // zera
+            doEfect();                              // chama novo ou mantem efeito anterior
+        }
+    }
+
+    if(udp.parsePacket() > 0){
+        memset(myUDPpacket, 0, UDP_PACKET_SIZE);                // Limpa o buffer
+        lenUDPpacket = udp.read(myUDPpacket, UDP_PACKET_SIZE);  // lê p/ buffer
+        if(lenUDPpacket >= TAMPACKET)
+            trataUDPpacket();                                   // trata pacote recebido
+    }
+
+}
